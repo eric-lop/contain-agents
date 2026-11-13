@@ -7,47 +7,11 @@ Run **OpenCode**, **Claude Code** and **Codex** (plus Blender and FreeCAD for he
 1. Put `Dockerfile`, `Dockerfile.project`, `docker-compose.yml` and `setup.sh` together in one folder, then run the installer from it:
    ```bash
    bash setup.sh
-   ```
-   This copies `Dockerfile` and `docker-compose.yml` to `~/.local/agents/` and creates `~/.local/agents/home/`, the folder mounted as the container's home. After editing either file, run `setup.sh` again to update the installed copy.
-
-2. Add the `agent` command to `~/.bashrc`:
-   ```bash
-   sed -i '/# >>> agent function >>>/,/# <<< agent function <<</d' ~/.bashrc
-   cat >> ~/.bashrc <<'EOF'
-   # >>> agent function >>>
-   agent() {
-     local dir="$HOME/.local/agents" today file= img=
-     # agent -f <Dockerfile> ...: run on top of the project's own image
-     if [ "$1" = -f ]; then file=$2; shift 2; fi
-     [ -d "$dir/home" ] || { echo "agent: not installed, run setup.sh first" >&2; return 1; }
-     # The stamp file decides when to update. A new day resets it; a forced update
-     # (see README) writes today's date plus a suffix, which then lasts for the day.
-     today=$(date +%F)
-     case "$(cat "$dir/cache-date" 2>/dev/null)" in
-       "$today"*) ;;
-       *) echo "$today" > "$dir/cache-date" ;;
-     esac
-     local -x HOST_UID HOST_GID   # exported to docker compose, gone after the function returns
-     HOST_UID=$(id -u) HOST_GID=$(id -g)
-     if ! docker compose -f "$dir/docker-compose.yml" build \
-            --build-arg CACHE_DATE="$(cat "$dir/cache-date")" agent; then
-       docker image inspect code-agents:local >/dev/null 2>&1 || return 1
-       echo "agent: update failed, starting the existing image" >&2
-     fi
-     if [ -n "$file" ]; then
-       img="agent-$(printf %s "$PWD" | sha1sum | cut -c1-12)"
-       docker build -t "$img-base" -f "$file" . &&
-       docker build -t "$img" --build-arg BASE="$img-base" -f "$dir/Dockerfile.project" "$dir" || return 1
-     fi
-     AGENT_IMAGE="$img" docker compose -f "$dir/docker-compose.yml" run --rm -v "$PWD:$PWD" -w "$PWD" agent "$@"
-   }
-   # <<< agent function <<<
-   EOF
    source ~/.bashrc
    ```
-   The `sed` line removes any earlier version first, so running this again replaces the function instead of adding a second copy. The quoted `'EOF'` keeps the variables from being expanded while writing.
+   This copies the Docker files to `~/.local/agents/`, creates `~/.local/agents/home/` (the folder mounted as the container's home), and writes the `agent()` function into `~/.bashrc`. The function sits between `# >>> agent function >>>` markers and replaces any earlier copy. After editing any of these files, or the function in `setup.sh`, run `setup.sh` again.
 
-3. Run `agent` once from a project folder. The first build takes a while because of Blender and FreeCAD.
+2. Run `agent` once from a project folder. The first build takes a while because of Blender and FreeCAD.
 
 ## Usage
 
@@ -91,7 +55,7 @@ If the daily rebuild fails (you're offline, or a vendor's installer is down), `a
   ```bash
   echo "$(date +%F)-$(date +%s)" > ~/.local/agents/cache-date
   ```
-- Update hourly instead: change `date +%F` to `date +%F-%H` in the function, and in the force command above.
+- Update hourly instead: change `date +%F` to `date +%F-%H` in the function in `setup.sh` (then re-run it), and in the force command above.
 - Clean up old image layers now and then: `docker image prune`.
 
 Claude Code's built-in auto-updater is turned off (`DISABLE_AUTOUPDATER=1`), because it would otherwise download copies into the persistent home folder. The binaries in `/opt` are read-only for your user, and the container is discarded after each run. The daily rebuild is what keeps you current.

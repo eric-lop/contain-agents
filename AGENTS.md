@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This project runs AI coding agents in a Docker container: `Dockerfile`, `Dockerfile.project`, `docker-compose.yml`, `setup.sh`, and the `agent()` shell function in `README.md`.
+This project runs AI coding agents in a Docker container: `Dockerfile`, `Dockerfile.project`, `docker-compose.yml`, `setup.sh`, and the `agent()` shell function that `setup.sh` writes into `~/.bashrc`.
 
 ## Guiding principle: keep it simple
 
