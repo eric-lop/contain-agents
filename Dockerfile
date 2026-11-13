@@ -21,7 +21,12 @@ RUN for d in /opt/opencode/.opencode/bin /opt/claude/.local/bin /opt/codex/.loca
     chmod -R a+rX /opt; \
     ls -l /usr/local/bin
 
-RUN useradd --create-home --uid 1000 --shell /bin/bash code-assistant
+# Match the host user (compose runs the container as HOST_UID:HOST_GID), so the
+# user has a passwd entry. -o tolerates a UID that already exists in the image.
+ARG HOST_UID=1000
+ARG HOST_GID=1000
+RUN getent group "$HOST_GID" >/dev/null || groupadd --gid "$HOST_GID" code-assistant; \
+    useradd --create-home -o --uid "$HOST_UID" --gid "$HOST_GID" --shell /bin/bash code-assistant
 USER code-assistant
 ENV HOME=/home/code-assistant
 

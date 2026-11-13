@@ -16,17 +16,22 @@ Run **OpenCode**, **Claude Code** and **Codex** (plus Blender and FreeCAD for he
    cat >> ~/.bashrc <<'EOF'
    # >>> agent function >>>
    agent() {
-     local dir="$HOME/.local/agents"
-     case "$HOME/" in
-       "${PWD%/}/"*) echo "agent: refusing to mount $PWD (contains your home)" >&2; return 1 ;;
-     esac
-     case "$PWD/" in
-       "$HOME"/.ssh/*|"$HOME"/.gnupg/*|"$HOME"/.aws/*|"$HOME"/.config/*|"$HOME"/.local/*)
-         echo "agent: refusing to mount $PWD" >&2; return 1 ;;
-     esac
+     local dir="$HOME/.local/agents" today
      [ -d "$dir/home" ] || { echo "agent: not installed, run setup.sh first" >&2; return 1; }
-     docker compose -f "$dir/docker-compose.yml" build --build-arg CACHE_DATE="$(date +%F)" agent || return 1
-     HOST_UID=$(id -u) HOST_GID=$(id -g) \
+     # The stamp file decides when to update. A new day resets it; a forced update
+     # (see README) writes today's date plus a suffix, which then lasts for the day.
+     today=$(date +%F)
+     case "$(cat "$dir/cache-date" 2>/dev/null)" in
+       "$today"*) ;;
+       *) echo "$today" > "$dir/cache-date" ;;
+     esac
+     local -x HOST_UID HOST_GID   # exported to docker compose, gone after the function returns
+     HOST_UID=$(id -u) HOST_GID=$(id -g)
+     if ! docker compose -f "$dir/docker-compose.yml" build \
+            --build-arg CACHE_DATE="$(cat "$dir/cache-date")" agent; then
+       docker image inspect code-agents:local >/dev/null 2>&1 || return 1
+       echo "agent: update failed, starting the existing image" >&2
+     fi
      docker compose -f "$dir/docker-compose.yml" run --rm -v "$PWD:$PWD" -w "$PWD" agent "$@"
    }
    # <<< agent function <<<
@@ -48,7 +53,7 @@ agent opencode    # OpenCode (v2 may install it as `opencode2`; check with `agen
 agent bash        # a shell in the container, to look around
 ```
 
-`agent` refuses to run from `~` or any folder above it (such as `/home` or `/`), and from inside `~/.ssh`, `~/.gnupg`, `~/.aws`, `~/.config` or `~/.local`. So it never mounts your whole home, your credentials or the agents' own tokens as a project. The current folder is mounted at the same path as on your host, which keeps each project's sessions and history separate.
+`agent` mounts whatever folder you run it from, with no checks. Never run it from `~`, a folder above it, or a folder holding credentials (such as `~/.ssh` or `~/.local`, where the agents' tokens live). The current folder is mounted at the same path as on your host, which keeps each project's sessions and history separate.
 
 ### Logging in
 
@@ -56,13 +61,15 @@ Use OAuth (`/login` in Claude Code, `codex login`, `/connect` in OpenCode). The 
 
 ## Updates
 
-The image rebuilds itself on the **first `agent` call of each day**. The `CACHE_DATE` build argument changes daily, which reinstalls the harness layers with the latest releases. Later calls that day use the cache and start in a couple of seconds. The large `apt-get` layer stays cached.
+The image rebuilds itself on the **first `agent` call of each day**. The function keeps the build date in `~/.local/agents/cache-date` and passes it as the `CACHE_DATE` build argument. When the date changes, the harness layers are reinstalled with the latest releases. Later calls that day use the cache and start in a couple of seconds. The large `apt-get` layer stays cached.
 
-- Force an update now:
+If the daily rebuild fails (you're offline, or a vendor's installer is down), `agent` prints a warning and starts the image you already have.
+
+- Force an update now. The next `agent` call rebuilds, and the forced version stays in use for the rest of the day:
   ```bash
-  docker compose -f ~/.local/agents/docker-compose.yml build --build-arg CACHE_DATE=$(date +%s)
+  echo "$(date +%F)-$(date +%s)" > ~/.local/agents/cache-date
   ```
-- Update hourly instead: change `date +%F` to `date +%F-%H` in the function.
+- Update hourly instead: change `date +%F` to `date +%F-%H` in the function, and in the force command above.
 - Clean up old image layers now and then: `docker image prune`.
 
 Claude Code's built-in auto-updater is turned off (`DISABLE_AUTOUPDATER=1`), because it would otherwise download copies into the persistent home folder. The binaries in `/opt` are read-only for your user, and the container is discarded after each run. The daily rebuild is what keeps you current.
