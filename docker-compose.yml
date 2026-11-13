@@ -1,0 +1,19 @@
+services:
+  agent:
+    build: .
+    image: code-agents:local
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    init: true
+    stdin_open: true
+    tty: true
+    environment:
+      HOME: /home/code-assistant
+      # Updates come from the daily image rebuild; stop the built-in updater
+      # from downloading copies into the persistent home folder
+      DISABLE_AUTOUPDATER: "1"
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    volumes:
+      # Only home/, never the install dir (it holds the Dockerfile and this file)
+      - $HOME/.local/agents/home:/home/code-assistant
