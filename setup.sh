@@ -10,7 +10,7 @@ SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 INSTALL_DIR="$HOME/.local/agents"
 AGENT_HOME="$INSTALL_DIR/home"
 
-for f in Dockerfile docker-compose.yml; do
+for f in Dockerfile Dockerfile.project docker-compose.yml; do
   if [ ! -f "$SRC_DIR/$f" ]; then
     echo "ERROR: $SRC_DIR/$f not found (it must sit next to setup.sh)." >&2
     exit 1
@@ -40,8 +40,8 @@ chmod 700 "$AGENT_HOME"
 
 # Always copy, so edits to the files reach the installed copy
 if [ "$SRC_DIR" != "$INSTALL_DIR" ]; then
-  install -m 644 "$SRC_DIR/Dockerfile" "$SRC_DIR/docker-compose.yml" "$INSTALL_DIR/"
-  echo "copied  Dockerfile, docker-compose.yml -> $INSTALL_DIR"
+  install -m 644 "$SRC_DIR/Dockerfile" "$SRC_DIR/Dockerfile.project" "$SRC_DIR/docker-compose.yml" "$INSTALL_DIR/"
+  echo "copied  Dockerfile, Dockerfile.project, docker-compose.yml -> $INSTALL_DIR"
 fi
 
 # Keep home/ (tokens, caches) out of the Docker build context

@@ -1,0 +1,11 @@
+# Adds the agents on top of a project's own image (built from its Dockerfile).
+# The base must be glibc-based (Debian, Ubuntu, Fedora...).
+ARG BASE
+FROM code-agents:local AS harness
+FROM ${BASE}
+USER root
+COPY --from=harness /opt /opt
+COPY --from=harness /usr/local/bin/ /usr/local/bin/
+ENV HOME=/home/code-assistant DISABLE_AUTOUPDATER=1
+ENTRYPOINT []
+CMD ["bash"]

@@ -4,7 +4,7 @@ Run **OpenCode**, **Claude Code** and **Codex** (plus Blender and FreeCAD for he
 
 ## Install
 
-1. Put `Dockerfile`, `docker-compose.yml` and `setup.sh` together in one folder, then run the installer from it:
+1. Put `Dockerfile`, `Dockerfile.project`, `docker-compose.yml` and `setup.sh` together in one folder, then run the installer from it:
    ```bash
    bash setup.sh
    ```
@@ -16,7 +16,9 @@ Run **OpenCode**, **Claude Code** and **Codex** (plus Blender and FreeCAD for he
    cat >> ~/.bashrc <<'EOF'
    # >>> agent function >>>
    agent() {
-     local dir="$HOME/.local/agents" today
+     local dir="$HOME/.local/agents" today file= img=
+     # agent -f <Dockerfile> ...: run on top of the project's own image
+     if [ "$1" = -f ]; then file=$2; shift 2; fi
      [ -d "$dir/home" ] || { echo "agent: not installed, run setup.sh first" >&2; return 1; }
      # The stamp file decides when to update. A new day resets it; a forced update
      # (see README) writes today's date plus a suffix, which then lasts for the day.
@@ -32,7 +34,12 @@ Run **OpenCode**, **Claude Code** and **Codex** (plus Blender and FreeCAD for he
        docker image inspect code-agents:local >/dev/null 2>&1 || return 1
        echo "agent: update failed, starting the existing image" >&2
      fi
-     docker compose -f "$dir/docker-compose.yml" run --rm -v "$PWD:$PWD" -w "$PWD" agent "$@"
+     if [ -n "$file" ]; then
+       img="agent-$(printf %s "$PWD" | sha1sum | cut -c1-12)"
+       docker build -t "$img-base" -f "$file" . &&
+       docker build -t "$img" --build-arg BASE="$img-base" -f "$dir/Dockerfile.project" "$dir" || return 1
+     fi
+     AGENT_IMAGE="$img" docker compose -f "$dir/docker-compose.yml" run --rm -v "$PWD:$PWD" -w "$PWD" agent "$@"
    }
    # <<< agent function <<<
    EOF
@@ -54,6 +61,21 @@ agent bash        # a shell in the container, to look around
 ```
 
 `agent` mounts whatever folder you run it from, with no checks. Never run it from `~`, a folder above it, or a folder holding credentials (such as `~/.ssh` or `~/.local`, where the agents' tokens live). The current folder is mounted at the same path as on your host, which keeps each project's sessions and history separate.
+
+### Projects with their own Dockerfile
+
+For a project (such as a C++ one) whose Dockerfile installs its toolchain and dependencies, pass it with `-f` so the agents run inside that environment:
+
+```bash
+agent -f Dockerfile claude
+agent -f docker/dev.Dockerfile bash
+```
+
+`agent` builds the project's Dockerfile with the project folder as context, then copies the agents on top using `Dockerfile.project`. The mounts and restrictions are the same as usual.
+
+- The project image must be glibc-based (Debian, Ubuntu, Fedora...). It should include `git` and `ca-certificates` if the agents need them.
+- Blender and FreeCAD aren't included in this mode.
+- Each project leaves images named `agent-<hash>` and `agent-<hash>-base`. List them with `docker image ls 'agent-*'` and remove old ones with `docker image rm`.
 
 ### Logging in
 
